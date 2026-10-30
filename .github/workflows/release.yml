@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]              # only when you push a tag like v1.0.0
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Buildx       # Docker's modern build engine, required by build-push-action
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:                     # "with" = inputs for the action
+          username: ${{ vars.DOCKERHUB_USERNAME }}   # ${{ }} = filled in by GitHub before the step runs
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Work out the image tags
+        id: meta                  # an id lets later steps read this step's outputs
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ vars.DOCKERHUB_USERNAME }}/stack-backup
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+          # Tag v1.2.3 produces the image tags 1.2.3, 1.2 and latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .              # build from the repo root, like "docker build ."
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}   # adds source repo, commit and date to the image

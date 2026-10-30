@@ -1,0 +1,41 @@
+name: CI
+
+on:                               # the events that start this workflow
+  pull_request:                   # every pull request
+  push:
+    branches: [main]              # and every push to main (that's what a merge is)
+
+permissions:
+  contents: read                  # the workflow's automatic GitHub token can only read the repo
+
+jobs:
+  test:                           # job name: it shows up as the "test" check on pull requests
+    runs-on: ubuntu-24.04         # a fresh Ubuntu VM from GitHub, thrown away after the job
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v7   # "uses" = run a published action; this one clones the repo
+
+      - name: Lint the Dockerfile
+        run: docker run --rm -i hadolint/hadolint:v2.12.0 < Dockerfile
+        # "run" = a shell command. hadolint checks Dockerfile best practices;
+        # -i + "< Dockerfile" feeds the file into the container's input
+
+      - name: Build the image
+        run: docker build -t stack-backup:ci .
+
+      - name: Check the shell script
+        run: docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:v0.10.0 backup.sh
+        # shellcheck finds common bugs in shell scripts: unquoted variables, typos, bad tests
+
+      - name: Smoke test
+        run: |
+          docker run --rm --entrypoint sh stack-backup:ci -c 'restic version && mariadb-dump --version && sqlite3 --version'
+          ! docker run --rm stack-backup:ci
+
+      - name: Scan for critical vulnerabilities
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.69.3 image --exit-code 1 --severity CRITICAL --ignore-unfixed stack-backup:ci
+        # The socket mount lets Trivy read the image you just built.
+        # --exit-code 1 = fail the job if anything is found; --ignore-unfixed = skip
+        # vulnerabilities that have no fix yet (you couldn't act on them anyway)
