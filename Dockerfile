@@ -1,6 +1,7 @@
 FROM alpine:3.22
 
-RUN apk add --no-cache restic mariadb-client sqlite tzdata
+# hadolint ignore=DL3018
+RUN apk add --no-cache restic mariadb-client postgresql17-client sqlite tzdata
 
 COPY --chmod=755 backup.sh /usr/local/bin/backup.sh
 
